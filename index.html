@@ -88,7 +88,8 @@ async function loadSchedules(){
     const body=[...grouped.entries()].map(([mid,peopleNames])=>`<div class="item"><b>${esc(ministryNames.get(mid)||'Ministério')}</b><span>${peopleNames.map(esc).join(', ')}</span></div>`).join('');
     const regular=mins.filter(x=>x.active&&!x.is_prayer&&!['Recepção','Liderança'].includes(x.name));
     const pending=regular.filter(x=>(assigned.filter(a=>a.ministry_id===x.id).length)<Number(x.min_people||0));
-    const statusLabel=pending.length?'Escala parcial · pendências: '+pending.map(x=>x.name).join(', '):(m.status||'Planejada');
+    const statusNames={draft:'Rascunho',published:'Publicada',completed:'Concluída',canceled:'Cancelada'};
+    const statusLabel=pending.length?'Escala parcial · pendências: '+pending.map(x=>x.name).join(', '):(statusNames[m.status]||m.status||'Rascunho');
     return `<div class="card"><b>${new Date(m.meeting_date+'T12:00:00').toLocaleDateString('pt-BR')} · ${esc((m.meeting_time||'').slice(0,5))}</b><div class="small muted">${esc(statusLabel)}</div><div class="list" style="margin-top:9px">${body||'<span class="muted">Sem atribuições.</span>'}</div>${pending.length?`<p class="small muted">Ainda faltam participantes para: ${pending.map(x=>esc(x.name)).join(', ')}.</p>`:''}</div>`;
   }).join('');
 }
@@ -285,7 +286,7 @@ $('generateform').onsubmit=async e=>{
       if(selected<target) pendingMinistries.push({name:ministry.name,needed:target,filled:selected});
     }
     // Garante que nenhum integrante seja escalado em dois ministérios regulares.
-    const {data: meeting,error:meetErr}=await db.from('meetings').insert({cell_id:cell,meeting_date:date,meeting_time:cellData.meeting_time,status:'rascunho'}).select().single();
+    const {data: meeting,error:meetErr}=await db.from('meetings').insert({cell_id:cell,meeting_date:date,meeting_time:cellData.meeting_time,status:'draft'}).select().single();
     if(meetErr) throw meetErr;
     const rows=assignments.map(a=>({...a,meeting_id:meeting.id}));
     const {error:insertErr}=await db.from('assignments').insert(rows);
