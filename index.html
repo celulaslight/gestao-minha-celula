@@ -126,12 +126,19 @@ $('generateform').onsubmit=async e=>{
     if(!reception) throw new Error('O ministério Recepção não foi encontrado ou está inativo.');
     assignments.push({cell_id:cell,person_id:hostA,ministry_id:reception.id,counts_for_rotation:false});
     assignments.push({cell_id:cell,person_id:hostB,ministry_id:reception.id,counts_for_rotation:false});
+    // Guilherme e Lary são a liderança fixa do GC: os dois aparecem na escala,
+    // independentemente do mínimo/máximo configurado, e não entram no rodízio de liderança.
+    const leadership=mins.find(m=>m.name.trim().toLocaleLowerCase('pt-BR')==='liderança'&&m.active);
+    if(leadership){
+      assignments.push({cell_id:cell,person_id:hostA,ministry_id:leadership.id,counts_for_rotation:false});
+      assignments.push({cell_id:cell,person_id:hostB,ministry_id:leadership.id,counts_for_rotation:false});
+    }
     // Os anfitriões continuam elegíveis para outros ministérios.
     const prayer=mins.find(m=>m.is_prayer&&m.active);
     if(prayer){
       available.forEach(p=>{assignments.push({cell_id:cell,person_id:p.id,ministry_id:prayer.id,counts_for_rotation:false});});
     }
-    const normal=mins.filter(m=>m.active&&!m.is_prayer&&m.name!=='Recepção');
+    const normal=mins.filter(m=>m.active&&!m.is_prayer&&m.name!=='Recepção'&&m.name.trim().toLocaleLowerCase('pt-BR')!=='liderança');
     const assignedNormal=new Set();
     const countFor=(person, ministry)=>historyCount(person.id,ministry.id,hist);
     const candidatesFor=(ministry)=>available.filter(p=>{if(used.has(p.id)||assignedNormal.has(p.id)||!eligible.get(p.id)?.has(ministry.id))return false;const partnerId=pairMap.get(p.id);if(!partnerId)return true;const partner=available.find(x=>x.id===partnerId);return !!partner&&!used.has(partnerId)&&!assignedNormal.has(partnerId)});
