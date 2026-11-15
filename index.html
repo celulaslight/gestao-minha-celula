@@ -57,7 +57,7 @@ $('forgotbtn').onclick=()=>{$('recoveremail').value=$('email').value.trim();$('r
 $('cancelrecover').onclick=()=>{$('recoverform').classList.add('hidden');$('login').classList.remove('hidden');$('forgotbtn').classList.remove('hidden')};
 $('recoverform').onsubmit=async e=>{e.preventDefault();const email=$('recoveremail').value.trim();const {error}=await db.auth.resetPasswordForEmail(email,{redirectTo:URL_SITE});if(error)return say('authmsg','Não foi possível enviar o link: '+error.message,true);say('authmsg','Enviamos um link de recuperação para '+email+'. Verifique também a caixa de spam.')};
 $('newpassform').onsubmit=async e=>{e.preventDefault();const password=$('newpassword').value;const {error}=await db.auth.updateUser({password});if(error)return say('authmsg','Não foi possível atualizar a senha: '+error.message,true);$('newpassform').classList.add('hidden');$('login').classList.remove('hidden');$('forgotbtn').classList.remove('hidden');say('authmsg','Senha atualizada com sucesso. Entre com sua nova senha.');history.replaceState(null,'',location.pathname)};
-const URL_SITE=window.location.origin;let user,cell,cellData,role,people=[],mins=[],couples=[],personMinistries=[],myPeople=[],availabilityMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),availabilityChanges=new Map(),availabilityOriginal=new Set();const defaults=[['Recepção',0,0,false],['QUEBRA GELO',1,1,false],['LOUVOR',1,1,false],['EDIFICAÇÃO',1,1,false],['EVANGELISMO',1,1,false],['KIDS',1,1,false],['LANCHE',2,2,false],['Liderança',0,0,false]];function say(id,t,err=false){$(id).textContent=t;$(id).classList.remove('hidden','error');if(err)$(id).classList.add('error')}function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function manage(){return ['admin','leader'].includes(role)}
+const URL_SITE=window.location.origin;let user,cell,cellData,role,people=[],mins=[],couples=[],personMinistries=[],myPeople=[],availabilityMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),currentAvailabilityPersonIndex=0,availabilityChanges=new Map(),availabilityOriginal=new Set();const defaults=[['Recepção',0,0,false],['QUEBRA GELO',1,1,false],['LOUVOR',1,1,false],['EDIFICAÇÃO',1,1,false],['EVANGELISMO',1,1,false],['KIDS',1,1,false],['LANCHE',2,2,false],['Liderança',0,0,false]];function say(id,t,err=false){$(id).textContent=t;$(id).classList.remove('hidden','error');if(err)$(id).classList.add('error')}function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function manage(){return ['admin','leader'].includes(role)}
 async function load(){let {data:a,error}=await db.from('cell_access').select('cell_id,role').eq('user_id',user.id);if(error)throw error;if(!a?.length){$('create').classList.remove('hidden');$('workspace').classList.add('hidden');return}cell=a[0].cell_id;role=a[0].role;$('availability').querySelector('h2').textContent=manage()?'Disponibilidade dos integrantes':'Minha disponibilidade';$('availabilityhelp').textContent=manage()?'Como líder, você pode editar a disponibilidade de todos os integrantes ativos. Selecione as datas em que cada pessoa poderá participar; os dias não selecionados serão considerados indisponíveis.':'Somente as datas selecionadas são consideradas disponíveis. Selecione os dias em que poderá participar; os dias não selecionados serão considerados indisponíveis.';let {data:c,error:ce}=await db.from('cells').select('*').eq('id',cell).single();if(ce)throw ce;cellData=c;$('create').classList.add('hidden');$('workspace').classList.remove('hidden');$('useremail').textContent=user.email;$('role').textContent='Perfil: '+role;$('brand').textContent=c.name;$('editname').value=c.name;$('editday').value=c.meeting_day;$('edittime').value=(c.meeting_time||'20:00').slice(0,5);$('dayview').textContent=c.meeting_day;$('timeview').textContent=(c.meeting_time||'').slice(0,5);let [p,m,co,pm]=await Promise.all([db.from('people').select('*').eq('cell_id',cell).order('name'),db.from('ministries').select('*').eq('cell_id',cell).order('name'),db.from('couples').select('*').eq('cell_id',cell),db.from('person_ministries').select('person_id,ministry_id').eq('cell_id',cell)]);if(p.error)throw p.error;if(m.error)throw m.error;if(co.error)throw co.error;if(pm.error)throw pm.error;people=p.data||[];mins=m.data||[];couples=co.data||[];personMinistries=pm.data||[];myPeople=manage()?people.filter(x=>x.active):people.filter(x=>x.auth_user_id===user.id);if(!myPeople.length)throw new Error('Sua conta ainda não está vinculada a um cadastro de integrante. Peça ao líder para conferir seu vínculo.');document.querySelectorAll('.tabs button[data-tab="settings"],.tabs button[data-tab="members"],.tabs button[data-tab="ministries"]').forEach(b=>b.classList.toggle('hidden',!manage()));$('generateform').classList.toggle('hidden',!manage());render();await loadSchedules();await loadAvailability()}
 async function setHostByPerson(personId){
   const couple=couples.find(c=>c.person_one===personId||c.person_two===personId);
@@ -113,17 +113,39 @@ async function loadAvailability(){
   availabilityOriginal=new Set(rows.filter(r=>r.available===true).map(r=>r.person_id+'|'+r.meeting_date));
   $('saveavailability').disabled=true;
   $('monthlabel').textContent=availabilityMonth.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-  $('availabilitycards').innerHTML=myPeople.map(person=>{
-    const availableDates=new Set(rows.filter(r=>r.person_id===person.id&&r.available===true).map(r=>r.meeting_date));
-    const {start,end}=monthBounds(availabilityMonth);
-    const days=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
-    let html=days.map(d=>`<div class="small muted" style="text-align:center;font-weight:700">${d}</div>`).join('');
-    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
-      const key=dateKey(d),inMonth=d.getMonth()===availabilityMonth.getMonth(),selected=availableDates.has(key);
-      html+=`<button type="button" class="calday ${selected?'':'offday'}" data-person="${person.id}" data-date="${key}" data-day="${d.getDate()}" ${inMonth?'':'disabled'} aria-pressed="${selected}" title="${selected?'Disponível':'Indisponível'}">${d.getDate()}${selected?'<small>Disponível</small>':'<small>Indisponível</small>'}</button>`;
-    }
-    return `<div class="card"><h3>${esc(person.name)}</h3><div class="calendar">${html}</div><p class="small muted">Dias selecionados (verde) são disponíveis. Dias não selecionados (vermelho) são indisponíveis.</p></div>`;
-  }).join('');
+  if(currentAvailabilityPersonIndex>=myPeople.length)currentAvailabilityPersonIndex=0;
+  const person=myPeople[currentAvailabilityPersonIndex];
+  const availableDates=new Set(rows.filter(r=>r.person_id===person.id&&r.available===true).map(r=>r.meeting_date));
+  const {start,end}=monthBounds(availabilityMonth);
+  const days=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+  let calendarHtml=days.map(d=>`<div class="small muted" style="text-align:center;font-weight:700">${d}</div>`).join('');
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
+    const key=dateKey(d),inMonth=d.getMonth()===availabilityMonth.getMonth(),selected=availableDates.has(key);
+    calendarHtml+=`<button type="button" class="calday ${selected?'':'offday'}" data-person="${person.id}" data-date="${key}" data-day="${d.getDate()}" ${inMonth?'':'disabled'} aria-pressed="${selected}" title="${selected?'Disponível':'Indisponível'}">${d.getDate()}${selected?'<small>Disponível</small>':'<small>Indisponível</small>'}</button>`;
+  }
+  const canSwitch=manage()&&myPeople.length>1;
+  $('availabilitycards').innerHTML=`<div class="card">
+    <div class="row" style="align-items:center;justify-content:space-between;gap:12px">
+      ${canSwitch?'<button type="button" id="prevperson" aria-label="Integrante anterior" title="Integrante anterior">←</button>':'<span></span>'}
+      <div style="text-align:center;flex:1">
+        <h2 style="margin:0">${esc(person.name)}</h2>
+        <div class="small muted">${currentAvailabilityPersonIndex+1} de ${myPeople.length} integrantes</div>
+      </div>
+      ${canSwitch?'<button type="button" id="nextperson" aria-label="Próximo integrante" title="Próximo integrante">→</button>':'<span></span>'}
+    </div>
+    <div class="calendar">${calendarHtml}</div>
+    <p class="small muted">Dias selecionados (verde) são disponíveis. Dias não selecionados (vermelho) são indisponíveis.</p>
+  </div>`;
+  const switchPerson=async direction=>{
+    if(availabilityChanges.size&&!confirm('Há alterações não salvas. Deseja descartá-las e trocar de integrante?'))return;
+    availabilityChanges.clear();
+    currentAvailabilityPersonIndex=(currentAvailabilityPersonIndex+direction+myPeople.length)%myPeople.length;
+    try{await loadAvailability()}catch(e){say('availabilitymsg',e.message,true)}
+  };
+  if(canSwitch){
+    $('prevperson').onclick=()=>switchPerson(-1);
+    $('nextperson').onclick=()=>switchPerson(1);
+  }
   document.querySelectorAll('.calday[data-person]').forEach(btn=>btn.onclick=()=>{
     const personId=btn.dataset.person,date=btn.dataset.date;
     const key=personId+'|'+date;
