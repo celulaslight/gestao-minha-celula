@@ -285,7 +285,7 @@ $('generateform').onsubmit=async e=>{
       if(selected<target) pendingMinistries.push({name:ministry.name,needed:target,filled:selected});
     }
     // Garante que nenhum integrante seja escalado em dois ministérios regulares.
-    const {data: meeting,error:meetErr}=await db.from('meetings').insert({cell_id:cell,meeting_date:date,meeting_time:cellData.meeting_time,status:'planned'}).select().single();
+    const {data: meeting,error:meetErr}=await db.from('meetings').insert({cell_id:cell,meeting_date:date,meeting_time:cellData.meeting_time,status:'rascunho'}).select().single();
     if(meetErr) throw meetErr;
     const rows=assignments.map(a=>({...a,meeting_id:meeting.id}));
     const {error:insertErr}=await db.from('assignments').insert(rows);
