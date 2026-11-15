@@ -110,7 +110,7 @@ $('generateform').onsubmit=async e=>{
     const [{data: pm,error:pmErr},{data: av,error:avErr},{data: hist,error:histErr}]=await Promise.all([
       db.from('person_ministries').select('person_id,ministry_id').eq('cell_id',cell),
       db.from('availability').select('person_id,meeting_date,available').eq('cell_id',cell).eq('meeting_date',date),
-      db.from('rotation_history').select('person_id,ministry_id').eq('cell_id',cell)
+      db.from('rotation_history').select('person_id,ministry_id,served_at').eq('cell_id',cell)
     ]);
     if(pmErr) throw pmErr;if(avErr) throw avErr;if(histErr) throw histErr;
     const active=people.filter(x=>x.active);
@@ -126,7 +126,7 @@ $('generateform').onsubmit=async e=>{
     if(!reception) throw new Error('O ministério Recepção não foi encontrado ou está inativo.');
     assignments.push({cell_id:cell,person_id:hostA,ministry_id:reception.id,counts_for_rotation:false});
     assignments.push({cell_id:cell,person_id:hostB,ministry_id:reception.id,counts_for_rotation:false});
-    used.add(hostA);used.add(hostB);
+    // Os anfitriões continuam elegíveis para outros ministérios.
     const prayer=mins.find(m=>m.is_prayer&&m.active);
     if(prayer){
       available.forEach(p=>{assignments.push({cell_id:cell,person_id:p.id,ministry_id:prayer.id,counts_for_rotation:false});});
@@ -135,7 +135,8 @@ $('generateform').onsubmit=async e=>{
     const assignedNormal=new Set();
     const countFor=(person, ministry)=>historyCount(person.id,ministry.id,hist);
     const candidatesFor=(ministry)=>available.filter(p=>{if(used.has(p.id)||assignedNormal.has(p.id)||!eligible.get(p.id)?.has(ministry.id))return false;const partnerId=pairMap.get(p.id);if(!partnerId)return true;const partner=available.find(x=>x.id===partnerId);return !!partner&&!used.has(partnerId)&&!assignedNormal.has(partnerId)});
-    const sorted=(arr,ministry)=>arr.sort((a,b)=>countFor(a,ministry)-countFor(b,ministry)||a.name.localeCompare(b.name,'pt-BR'));
+    const lastServed=(person,ministry)=>{const dates=(hist||[]).filter(x=>x.person_id===person.id&&x.ministry_id===ministry.id&&x.served_at).map(x=>new Date(x.served_at).getTime()).filter(Number.isFinite);return dates.length?Math.max(...dates):0;};
+    const sorted=(arr,ministry)=>arr.sort((a,b)=>countFor(a,ministry)-countFor(b,ministry)||lastServed(a,ministry)-lastServed(b,ministry)||a.name.localeCompare(b.name,'pt-BR'));
     // Primeiro tenta completar cada função respeitando os limites e evitando repetir pessoas.
     for(const ministry of normal){
       const target=Math.max(0,Number(ministry.min_people)||0);
