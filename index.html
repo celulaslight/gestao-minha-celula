@@ -229,7 +229,9 @@ $('generateform').onsubmit=async e=>{
     if(!available.some(p=>p.id===hostA)||!available.some(p=>p.id===hostB)) throw new Error('Um dos anfitriões está marcado como indisponível nessa data.');
     const pairMap=new Map();
     couples.forEach(c=>{pairMap.set(c.person_one,c.person_two);pairMap.set(c.person_two,c.person_one)});
-    const used=new Set();
+    // A restrição do banco permite somente uma atribuição por pessoa em cada reunião.
+    // Os anfitriões ficam reservados para Recepção e liderança fixa.
+    const used=new Set([hostA,hostB]);
     const assignments=[];
     const reception=mins.find(m=>m.name==='Recepção'&&m.active);
     if(!reception) throw new Error('O ministério Recepção não foi encontrado ou está inativo.');
@@ -240,10 +242,14 @@ $('generateform').onsubmit=async e=>{
     // A liderança dos anfitriões é fixa, mas não é gravada como uma segunda atribuição:
     // a tabela assignments permite apenas uma atribuição por pessoa em cada reunião.
     // A liderança será exibida como informação junto à escala, sem duplicar registros.
-    // Os anfitriões continuam elegíveis para outros ministérios.
+    // Os anfitriões ficam reservados para Recepção, evitando atribuições duplicadas na mesma reunião.
     const prayer=mins.find(m=>m.is_prayer&&m.active);
     if(prayer){
-      available.forEach(p=>{assignments.push({cell_id:cell,person_id:p.id,ministry_id:prayer.id,counts_for_rotation:false});});
+      // Os anfitriões já estão atribuídos à Recepção; não podem receber uma segunda atribuição.
+      available.filter(p=>p.id!==hostA&&p.id!==hostB).forEach(p=>{
+        assignments.push({cell_id:cell,person_id:p.id,ministry_id:prayer.id,counts_for_rotation:false});
+        used.add(p.id);
+      });
     }
     const normal=mins.filter(m=>m.active&&!m.is_prayer&&!['Recepção','Liderança'].includes(m.name));
     const assignedNormal=new Set();
