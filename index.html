@@ -90,7 +90,9 @@ async function loadSchedules(){
     const pending=regular.filter(x=>(assigned.filter(a=>a.ministry_id===x.id).length)<Number(x.min_people||0));
     const statusNames={draft:'Rascunho',published:'Publicada',completed:'Concluída',canceled:'Cancelada'};
     const statusLabel=pending.length?'Escala parcial · pendências: '+pending.map(x=>x.name).join(', '):(statusNames[m.status]||m.status||'Rascunho');
-    return `<div class="card"><b>${new Date(m.meeting_date+'T12:00:00').toLocaleDateString('pt-BR')} · ${esc((m.meeting_time||'').slice(0,5))}</b><div class="small muted">${esc(statusLabel)}</div><div class="list" style="margin-top:9px">${body||'<span class="muted">Sem atribuições.</span>'}</div>${pending.length?`<p class="small muted">Ainda faltam participantes para: ${pending.map(x=>esc(x.name)).join(', ')}.</p>`:''}</div>`;
+    const hostNames=[cellData?.host_person_one,cellData?.host_person_two].map(id=>names.get(id)).filter(Boolean);
+    const leadershipNote=hostNames.length===2?`<p class="small muted">Liderança fixa: ${hostNames.map(esc).join(' e ')}</p>`:'';
+    return `<div class="card"><b>${new Date(m.meeting_date+'T12:00:00').toLocaleDateString('pt-BR')} · ${esc((m.meeting_time||'').slice(0,5))}</b><div class="small muted">${esc(statusLabel)}</div>${leadershipNote}<div class="list" style="margin-top:9px">${body||'<span class="muted">Sem atribuições.</span>'}</div>${pending.length?`<p class="small muted">Ainda faltam participantes para: ${pending.map(x=>esc(x.name)).join(', ')}.</p>`:''}</div>`;
   }).join('');
 }
 function dateIsAvailable(personId, date, availabilityRows){
@@ -235,11 +237,9 @@ $('generateform').onsubmit=async e=>{
     assignments.push({cell_id:cell,person_id:hostB,ministry_id:reception.id,counts_for_rotation:false});
     // Guilherme e Lary são a liderança fixa do GC: os dois aparecem na escala,
     // independentemente do mínimo/máximo configurado, e não entram no rodízio de liderança.
-    const leadership=mins.find(m=>m.name.trim().toLocaleLowerCase('pt-BR')==='liderança'&&m.active);
-    if(leadership){
-      assignments.push({cell_id:cell,person_id:hostA,ministry_id:leadership.id,counts_for_rotation:false});
-      assignments.push({cell_id:cell,person_id:hostB,ministry_id:leadership.id,counts_for_rotation:false});
-    }
+    // A liderança dos anfitriões é fixa, mas não é gravada como uma segunda atribuição:
+    // a tabela assignments permite apenas uma atribuição por pessoa em cada reunião.
+    // A liderança será exibida como informação junto à escala, sem duplicar registros.
     // Os anfitriões continuam elegíveis para outros ministérios.
     const prayer=mins.find(m=>m.is_prayer&&m.active);
     if(prayer){
