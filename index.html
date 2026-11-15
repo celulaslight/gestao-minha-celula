@@ -86,7 +86,10 @@ async function loadSchedules(){
     const grouped=new Map();
     assigned.forEach(a=>{const key=a.ministry_id; if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(names.get(a.person_id)||'Integrante')});
     const body=[...grouped.entries()].map(([mid,peopleNames])=>`<div class="item"><b>${esc(ministryNames.get(mid)||'Ministério')}</b><span>${peopleNames.map(esc).join(', ')}</span></div>`).join('');
-    return `<div class="card"><b>${new Date(m.meeting_date+'T12:00:00').toLocaleDateString('pt-BR')} · ${esc((m.meeting_time||'').slice(0,5))}</b><div class="small muted">${esc(m.status||'Planejada')}</div><div class="list" style="margin-top:9px">${body||'<span class="muted">Sem atribuições.</span>'}</div></div>`;
+    const regular=mins.filter(x=>x.active&&!x.is_prayer&&!['Recepção','Liderança'].includes(x.name));
+    const pending=regular.filter(x=>(assigned.filter(a=>a.ministry_id===x.id).length)<Number(x.min_people||0));
+    const statusLabel=pending.length?'Escala parcial · pendências: '+pending.map(x=>x.name).join(', '):(m.status||'Planejada');
+    return `<div class="card"><b>${new Date(m.meeting_date+'T12:00:00').toLocaleDateString('pt-BR')} · ${esc((m.meeting_time||'').slice(0,5))}</b><div class="small muted">${esc(statusLabel)}</div><div class="list" style="margin-top:9px">${body||'<span class="muted">Sem atribuições.</span>'}</div>${pending.length?`<p class="small muted">Ainda faltam participantes para: ${pending.map(x=>esc(x.name)).join(', ')}.</p>`:''}</div>`;
   }).join('');
 }
 function dateIsAvailable(personId, date, availabilityRows){
@@ -243,8 +246,10 @@ $('generateform').onsubmit=async e=>{
     }
     const normal=mins.filter(m=>m.active&&!m.is_prayer&&!['Recepção','Liderança'].includes(m.name));
     const assignedNormal=new Set();
+    const pendingMinistries=[];
     const countFor=(person, ministry)=>historyCount(person.id,ministry.id,hist);
-    const candidatesFor=(ministry)=>available.filter(p=>{if(used.has(p.id)||assignedNormal.has(p.id)||!eligible.get(p.id)?.has(ministry.id))return false;const partnerId=pairMap.get(p.id);if(!partnerId)return true;const partner=available.find(x=>x.id===partnerId);return !!partner&&!used.has(partnerId)&&!assignedNormal.has(partnerId)});
+    const blockedByMinistry=new Map();
+    const candidatesFor=(ministry)=>available.filter(p=>{if(used.has(p.id)||assignedNormal.has(p.id)||blockedByMinistry.get(ministry.id)?.has(p.id)||!eligible.get(p.id)?.has(ministry.id))return false;const partnerId=pairMap.get(p.id);if(!partnerId)return true;const partner=available.find(x=>x.id===partnerId);return !!partner&&!used.has(partnerId)&&!assignedNormal.has(partnerId)});
     const lastServed=(person,ministry)=>{const dates=(hist||[]).filter(x=>x.person_id===person.id&&x.ministry_id===ministry.id&&x.served_at).map(x=>new Date(x.served_at).getTime()).filter(Number.isFinite);return dates.length?Math.max(...dates):0;};
     const sorted=(arr,ministry)=>arr.sort((a,b)=>countFor(a,ministry)-countFor(b,ministry)||lastServed(a,ministry)-lastServed(b,ministry)||a.name.localeCompare(b.name,'pt-BR'));
     // Primeiro tenta completar cada função respeitando os limites e evitando repetir pessoas.
@@ -266,14 +271,18 @@ $('generateform').onsubmit=async e=>{
           }
           // Se não couberem na mesma função, tenta alocar o cônjuge em outra função elegível.
           const other=normal.find(m=>m.id!==ministry.id && !assignedNormal.has(partner.id) && eligible.get(partner.id)?.has(m.id) && assignments.filter(a=>a.ministry_id===m.id).length < Number(m.max_people));
-          if(!other) throw new Error(`Não foi possível acomodar ${chosen.name} e seu cônjuge em ministérios compatíveis sem separá-los.`);
+          if(!other){
+            if(!blockedByMinistry.has(ministry.id))blockedByMinistry.set(ministry.id,new Set());
+            blockedByMinistry.get(ministry.id).add(chosen.id);
+            continue;
+          }
           assignments.push({cell_id:cell,person_id:chosen.id,ministry_id:ministry.id,counts_for_rotation:true},{cell_id:cell,person_id:partner.id,ministry_id:other.id,counts_for_rotation:true});
           assignedNormal.add(chosen.id);assignedNormal.add(partner.id);used.add(chosen.id);used.add(partner.id);selected++;continue;
         }
         assignments.push({cell_id:cell,person_id:chosen.id,ministry_id:ministry.id,counts_for_rotation:true});
         assignedNormal.add(chosen.id);used.add(chosen.id);selected++;
       }
-      if(selected<target) throw new Error(`Não há pessoas disponíveis e habilitadas suficientes para ${ministry.name}. Necessário: ${target}; encontrado: ${selected}.`);
+      if(selected<target) pendingMinistries.push({name:ministry.name,needed:target,filled:selected});
     }
     // Garante que nenhum integrante seja escalado em dois ministérios regulares.
     const {data: meeting,error:meetErr}=await db.from('meetings').insert({cell_id:cell,meeting_date:date,meeting_time:cellData.meeting_time,status:'planned'}).select().single();
@@ -285,7 +294,12 @@ $('generateform').onsubmit=async e=>{
     const historyRows=assignments.filter(a=>a.counts_for_rotation).map(a=>({cell_id:cell,person_id:a.person_id,meeting_id:meeting.id,ministry_id:a.ministry_id,served_at:new Date().toISOString()}));
     if(historyRows.length){const {error:he}=await db.from('rotation_history').insert(historyRows);if(he) throw he;}
     await loadSchedules();
-    say('schedulemsg','Escala gerada e salva. A recepção ficou com os anfitriões; oração incluiu os integrantes disponíveis; os serviços regulares foram registrados no histórico.');
+    if(pendingMinistries.length){
+      const pendingText=pendingMinistries.map(x=>`${x.name} (${x.filled}/${x.needed})`).join(', ');
+      say('schedulemsg',`Escala parcial gerada e salva! Os ministérios abaixo ficaram pendentes por falta de pessoas disponíveis e habilitadas: ${pendingText}. Os casais foram mantidos juntos e ninguém foi escalado fora das permissões.`);
+    }else{
+      say('schedulemsg','Escala completa gerada e salva! Todos os ministérios foram preenchidos respeitando disponibilidade, permissões, casais e rodízio.');
+    }
   }catch(err){say('schedulemsg',err.message||String(err),true);}
 };
 
