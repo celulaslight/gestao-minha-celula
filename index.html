@@ -47,7 +47,7 @@ window.__supabaseReady = new Promise((resolve, reject) => {
 <div id="schedulemsg" class="status hidden"></div></div>
 <div class="card"><h2>Escalas geradas</h2><div id="schedulelist" class="list"><p class="muted">Nenhuma escala carregada.</p></div></div>
 </section>
-<section id="availability" class="panel"><div class="card"><h2>Minha disponibilidade</h2><p class="muted">Todos os dias são considerados disponíveis por padrão. Clique em um dia para marcá-lo como indisponível. Clique novamente para liberar.</p><div class="row" style="align-items:center"><button type="button" id="prevmonth">← Mês anterior</button><b id="monthlabel" style="text-align:center;padding:10px"></b><button type="button" id="nextmonth">Próximo mês →</button></div></div><div id="availabilitycards" class="grid"></div><div id="availabilitymsg" class="status hidden"></div></section>
+<section id="availability" class="panel"><div class="card"><h2>Minha disponibilidade</h2><p class="muted">Somente as datas selecionadas são consideradas disponíveis. Selecione os dias em que poderá participar; os dias não selecionados serão considerados indisponíveis.</p><div class="row" style="align-items:center"><button type="button" id="prevmonth">← Mês anterior</button><b id="monthlabel" style="text-align:center;padding:10px"></b><button type="button" id="nextmonth">Próximo mês →</button></div></div><div id="availabilitycards" class="grid"></div><div id="availabilitymsg" class="status hidden"></div></section>
 </div><div id="msg" class="status hidden"></div></section></main>
 <script>
 (async () => {
@@ -91,7 +91,7 @@ async function loadSchedules(){
 }
 function dateIsAvailable(personId, date, availabilityRows){
   const row=(availabilityRows||[]).find(x=>x.person_id===personId && x.meeting_date===date);
-  return !row || row.available !== false;
+  return !!row && row.available === true;
 }
 function monthBounds(month){
   const first=new Date(month.getFullYear(),month.getMonth(),1);
@@ -111,29 +111,29 @@ async function loadAvailability(){
   const rows=data||[];
   $('monthlabel').textContent=availabilityMonth.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
   $('availabilitycards').innerHTML=myPeople.map(person=>{
-    const unavailable=new Set(rows.filter(r=>r.person_id===person.id&&r.available===false).map(r=>r.meeting_date));
+    const availableDates=new Set(rows.filter(r=>r.person_id===person.id&&r.available===true).map(r=>r.meeting_date));
     const {start,end}=monthBounds(availabilityMonth);
     const days=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
     let html=days.map(d=>`<div class="small muted" style="text-align:center;font-weight:700">${d}</div>`).join('');
     for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
-      const key=dateKey(d),inMonth=d.getMonth()===availabilityMonth.getMonth(),off=unavailable.has(key);
-      html+=`<button type="button" class="calday ${off?'offday':''}" data-person="${person.id}" data-date="${key}" ${inMonth?'':'disabled'} aria-pressed="${off}" title="${off?'Indisponível':'Disponível'}">${d.getDate()}${off?'<small>Indisponível</small>':''}</button>`;
+      const key=dateKey(d),inMonth=d.getMonth()===availabilityMonth.getMonth(),selected=availableDates.has(key);
+      html+=`<button type="button" class="calday ${selected?'':'offday'}" data-person="${person.id}" data-date="${key}" ${inMonth?'':'disabled'} aria-pressed="${selected}" title="${selected?'Disponível':'Indisponível'}">${d.getDate()}${selected?'<small>Disponível</small>':'<small>Indisponível</small>'}</button>`;
     }
-    return `<div class="card"><h3>${esc(person.name)}</h3><div class="calendar">${html}</div><p class="small muted">Dias marcados em vermelho são indisponíveis. Os demais permanecem disponíveis.</p></div>`;
+    return `<div class="card"><h3>${esc(person.name)}</h3><div class="calendar">${html}</div><p class="small muted">Dias selecionados (verde) são disponíveis. Dias não selecionados (vermelho) são indisponíveis.</p></div>`;
   }).join('');
   document.querySelectorAll('.calday[data-person]').forEach(btn=>btn.onclick=async()=>{
-    const personId=btn.dataset.person,date=btn.dataset.date,currentlyOff=btn.getAttribute('aria-pressed')==='true';
+    const personId=btn.dataset.person,date=btn.dataset.date,currentlySelected=btn.getAttribute('aria-pressed')==='true';
     btn.disabled=true;
     try{
-      if(currentlyOff){
+      if(currentlySelected){
         const {error}=await db.from('availability').delete().eq('cell_id',cell).eq('person_id',personId).eq('meeting_date',date);
         if(error)throw error;
       }else{
-        const {error}=await db.from('availability').upsert({cell_id:cell,person_id:personId,meeting_date:date,available:false,note:null},{onConflict:'person_id,meeting_date'});
+        const {error}=await db.from('availability').upsert({cell_id:cell,person_id:personId,meeting_date:date,available:true,note:null},{onConflict:'person_id,meeting_date'});
         if(error)throw error;
       }
       await loadAvailability();
-      say('availabilitymsg',currentlyOff?'Dia liberado. Agora está disponível.':'Dia marcado como indisponível.');
+      say('availabilitymsg',currentlySelected?'Data desmarcada. Agora está indisponível.':'Data selecionada. Você está disponível nesse dia.');
     }catch(err){say('availabilitymsg','Não foi possível salvar a disponibilidade: '+err.message,true);btn.disabled=false;}
   });
 }
