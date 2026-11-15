@@ -28,7 +28,7 @@ window.__supabaseReady = new Promise((resolve, reject) => {
 .rolecheck{display:inline-flex;align-items:center;gap:5px;font-weight:400;margin:0}
 .rolecheck input{width:auto;margin:0}
 .member-edit{display:block;padding:14px;margin-bottom:10px}.rename-row{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:10px 0}.rename-row label{width:100%;margin:0}.rename-row input{flex:1;min-width:180px}.rename-row button{white-space:nowrap}
-.member-edit .primary{margin-top:6px}.host-choice{margin:9px 0;padding:7px 10px;border:1px solid #d7e5dc;border-radius:8px;background:#f1f7f3;width:max-content}.calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-top:12px}.calday{min-height:54px;padding:5px 2px;background:#edf4ef;border:1px solid #d7e5dc;border-radius:8px;color:#24513b;display:flex;flex-direction:column;align-items:center;justify-content:center}.calday:disabled{opacity:.3;cursor:default}.calday.offday{background:#fff0ef;border-color:#e7b8b4;color:#9c3028}.calday small{font-size:9px}.tabs button.hidden{display:none!important}
+.member-edit .primary{margin-top:6px}.host-choice{margin:9px 0;padding:7px 10px;border:1px solid #d7e5dc;border-radius:8px;background:#f1f7f3;width:max-content}.calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-top:12px}.calday{min-height:54px;padding:5px 2px;background:#edf4ef;border:1px solid #d7e5dc;border-radius:8px;color:#24513b;display:flex;flex-direction:column;align-items:center;justify-content:center}.calday:disabled{opacity:.3;cursor:default}.calday.pending{outline:2px solid #d69b28;outline-offset:1px}.calday.offday{background:#fff0ef;border-color:#e7b8b4;color:#9c3028}.calday small{font-size:9px}.tabs button.hidden{display:none!important}
 </style></head><body><header><small>GESTÃO DE ESCALAS</small><h1 id="brand">Minha Célula</h1><p>Organização de equipes, calendário e rodízio inteligente</p></header><main class="wrap">
 <section id="auth" class="card"><h2>Acessar plataforma</h2><p class="muted">Entre com o e-mail confirmado no Supabase.</p><form id="login"><label>E-mail</label><input id="email" type="email" required><label>Senha</label><input id="password" type="password" required><p><button class="primary">Entrar</button></p></form>
 <p><button type="button" id="forgotbtn">Esqueci minha senha</button></p>
@@ -47,7 +47,7 @@ window.__supabaseReady = new Promise((resolve, reject) => {
 <div id="schedulemsg" class="status hidden"></div></div>
 <div class="card"><h2>Escalas geradas</h2><div id="schedulelist" class="list"><p class="muted">Nenhuma escala carregada.</p></div></div>
 </section>
-<section id="availability" class="panel"><div class="card"><h2>Minha disponibilidade</h2><p class="muted">Somente as datas selecionadas são consideradas disponíveis. Selecione os dias em que poderá participar; os dias não selecionados serão considerados indisponíveis.</p><div class="row" style="align-items:center"><button type="button" id="prevmonth">← Mês anterior</button><b id="monthlabel" style="text-align:center;padding:10px"></b><button type="button" id="nextmonth">Próximo mês →</button></div></div><div id="availabilitycards" class="grid"></div><div id="availabilitymsg" class="status hidden"></div></section>
+<section id="availability" class="panel"><div class="card"><h2>Minha disponibilidade</h2><p class="muted">Somente as datas selecionadas são consideradas disponíveis. Selecione os dias em que poderá participar; os dias não selecionados serão considerados indisponíveis.</p><div class="row" style="align-items:center"><button type="button" id="prevmonth">← Mês anterior</button><b id="monthlabel" style="text-align:center;padding:10px"></b><button type="button" id="nextmonth">Próximo mês →</button></div></div><div id="availabilitycards" class="grid"></div><div class="card"><button type="button" id="saveavailability" class="primary" disabled>Salvar disponibilidade</button><p class="small muted">As alterações só serão gravadas quando você clicar neste botão.</p></div><div id="availabilitymsg" class="status hidden"></div></section>
 </div><div id="msg" class="status hidden"></div></section></main>
 <script>
 (async () => {
@@ -57,7 +57,7 @@ $('forgotbtn').onclick=()=>{$('recoveremail').value=$('email').value.trim();$('r
 $('cancelrecover').onclick=()=>{$('recoverform').classList.add('hidden');$('login').classList.remove('hidden');$('forgotbtn').classList.remove('hidden')};
 $('recoverform').onsubmit=async e=>{e.preventDefault();const email=$('recoveremail').value.trim();const {error}=await db.auth.resetPasswordForEmail(email,{redirectTo:URL_SITE});if(error)return say('authmsg','Não foi possível enviar o link: '+error.message,true);say('authmsg','Enviamos um link de recuperação para '+email+'. Verifique também a caixa de spam.')};
 $('newpassform').onsubmit=async e=>{e.preventDefault();const password=$('newpassword').value;const {error}=await db.auth.updateUser({password});if(error)return say('authmsg','Não foi possível atualizar a senha: '+error.message,true);$('newpassform').classList.add('hidden');$('login').classList.remove('hidden');$('forgotbtn').classList.remove('hidden');say('authmsg','Senha atualizada com sucesso. Entre com sua nova senha.');history.replaceState(null,'',location.pathname)};
-const URL_SITE=window.location.origin;let user,cell,cellData,role,people=[],mins=[],couples=[],personMinistries=[],myPeople=[],availabilityMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);const defaults=[['Recepção',1,2,false],['Louvor',1,1,false],['Oração',0,0,true],['Ministração',1,1,false],['Organização',1,1,false],['Lanche',2,2,false],['Mídia',1,1,false],['Liderança',1,1,false]];function say(id,t,err=false){$(id).textContent=t;$(id).classList.remove('hidden','error');if(err)$(id).classList.add('error')}function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function manage(){return ['admin','leader'].includes(role)}
+const URL_SITE=window.location.origin;let user,cell,cellData,role,people=[],mins=[],couples=[],personMinistries=[],myPeople=[],availabilityMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),availabilityChanges=new Map(),availabilityOriginal=new Set();const defaults=[['Recepção',1,2,false],['Louvor',1,1,false],['Oração',0,0,true],['Ministração',1,1,false],['Organização',1,1,false],['Lanche',2,2,false],['Mídia',1,1,false],['Liderança',1,1,false]];function say(id,t,err=false){$(id).textContent=t;$(id).classList.remove('hidden','error');if(err)$(id).classList.add('error')}function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function manage(){return ['admin','leader'].includes(role)}
 async function load(){let {data:a,error}=await db.from('cell_access').select('cell_id,role').eq('user_id',user.id);if(error)throw error;if(!a?.length){$('create').classList.remove('hidden');$('workspace').classList.add('hidden');return}cell=a[0].cell_id;role=a[0].role;let {data:c,error:ce}=await db.from('cells').select('*').eq('id',cell).single();if(ce)throw ce;cellData=c;$('create').classList.add('hidden');$('workspace').classList.remove('hidden');$('useremail').textContent=user.email;$('role').textContent='Perfil: '+role;$('brand').textContent=c.name;$('editname').value=c.name;$('editday').value=c.meeting_day;$('edittime').value=(c.meeting_time||'20:00').slice(0,5);$('dayview').textContent=c.meeting_day;$('timeview').textContent=(c.meeting_time||'').slice(0,5);let [p,m,co,pm]=await Promise.all([db.from('people').select('*').eq('cell_id',cell).order('name'),db.from('ministries').select('*').eq('cell_id',cell).order('name'),db.from('couples').select('*').eq('cell_id',cell),db.from('person_ministries').select('person_id,ministry_id').eq('cell_id',cell)]);if(p.error)throw p.error;if(m.error)throw m.error;if(co.error)throw co.error;if(pm.error)throw pm.error;people=p.data||[];mins=m.data||[];couples=co.data||[];personMinistries=pm.data||[];myPeople=people.filter(x=>x.auth_user_id===user.id);if(!myPeople.length)throw new Error('Sua conta ainda não está vinculada a um cadastro de integrante. Peça ao líder para conferir seu vínculo.');document.querySelectorAll('.tabs button[data-tab="settings"],.tabs button[data-tab="members"],.tabs button[data-tab="ministries"]').forEach(b=>b.classList.toggle('hidden',!manage()));$('generateform').classList.toggle('hidden',!manage());render();await loadSchedules();await loadAvailability()}
 async function setHostByPerson(personId){
   const couple=couples.find(c=>c.person_one===personId||c.person_two===personId);
@@ -109,6 +109,9 @@ async function loadAvailability(){
   const {data,error}=await db.from('availability').select('id,person_id,meeting_date,available,note').eq('cell_id',cell).in('person_id',ids).gte('meeting_date',from).lte('meeting_date',to);
   if(error)throw error;
   const rows=data||[];
+  availabilityChanges.clear();
+  availabilityOriginal=new Set(rows.filter(r=>r.available===true).map(r=>r.person_id+'|'+r.meeting_date));
+  $('saveavailability').disabled=true;
   $('monthlabel').textContent=availabilityMonth.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
   $('availabilitycards').innerHTML=myPeople.map(person=>{
     const availableDates=new Set(rows.filter(r=>r.person_id===person.id&&r.available===true).map(r=>r.meeting_date));
@@ -117,28 +120,58 @@ async function loadAvailability(){
     let html=days.map(d=>`<div class="small muted" style="text-align:center;font-weight:700">${d}</div>`).join('');
     for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
       const key=dateKey(d),inMonth=d.getMonth()===availabilityMonth.getMonth(),selected=availableDates.has(key);
-      html+=`<button type="button" class="calday ${selected?'':'offday'}" data-person="${person.id}" data-date="${key}" ${inMonth?'':'disabled'} aria-pressed="${selected}" title="${selected?'Disponível':'Indisponível'}">${d.getDate()}${selected?'<small>Disponível</small>':'<small>Indisponível</small>'}</button>`;
+      html+=`<button type="button" class="calday ${selected?'':'offday'}" data-person="${person.id}" data-date="${key}" data-day="${d.getDate()}" ${inMonth?'':'disabled'} aria-pressed="${selected}" title="${selected?'Disponível':'Indisponível'}">${d.getDate()}${selected?'<small>Disponível</small>':'<small>Indisponível</small>'}</button>`;
     }
     return `<div class="card"><h3>${esc(person.name)}</h3><div class="calendar">${html}</div><p class="small muted">Dias selecionados (verde) são disponíveis. Dias não selecionados (vermelho) são indisponíveis.</p></div>`;
   }).join('');
-  document.querySelectorAll('.calday[data-person]').forEach(btn=>btn.onclick=async()=>{
-    const personId=btn.dataset.person,date=btn.dataset.date,currentlySelected=btn.getAttribute('aria-pressed')==='true';
-    btn.disabled=true;
-    try{
-      if(currentlySelected){
-        const {error}=await db.from('availability').delete().eq('cell_id',cell).eq('person_id',personId).eq('meeting_date',date);
-        if(error)throw error;
-      }else{
-        const {error}=await db.from('availability').upsert({cell_id:cell,person_id:personId,meeting_date:date,available:true,note:null},{onConflict:'person_id,meeting_date'});
-        if(error)throw error;
-      }
-      await loadAvailability();
-      say('availabilitymsg',currentlySelected?'Data desmarcada. Agora está indisponível.':'Data selecionada. Você está disponível nesse dia.');
-    }catch(err){say('availabilitymsg','Não foi possível salvar a disponibilidade: '+err.message,true);btn.disabled=false;}
+  document.querySelectorAll('.calday[data-person]').forEach(btn=>btn.onclick=()=>{
+    const personId=btn.dataset.person,date=btn.dataset.date;
+    const key=personId+'|'+date;
+    const current=btn.getAttribute('aria-pressed')==='true';
+    const desired=!current;
+    if(desired===availabilityOriginal.has(key))availabilityChanges.delete(key);else availabilityChanges.set(key,{personId,date,available:desired});
+    btn.setAttribute('aria-pressed',String(desired));
+    btn.classList.toggle('offday',!desired);
+    btn.classList.toggle('pending',availabilityChanges.has(key));
+    btn.title=desired?'Disponível':'Indisponível';
+    btn.innerHTML=btn.dataset.day+(desired?'<small>Disponível</small>':'<small>Indisponível</small>');
+    $('saveavailability').disabled=availabilityChanges.size===0;
+    say('availabilitymsg','Você tem alterações não salvas. Clique em “Salvar disponibilidade” para gravá-las.');
   });
 }
-$('prevmonth').onclick=async()=>{availabilityMonth=new Date(availabilityMonth.getFullYear(),availabilityMonth.getMonth()-1,1);try{await loadAvailability()}catch(e){say('availabilitymsg',e.message,true)}};
-$('nextmonth').onclick=async()=>{availabilityMonth=new Date(availabilityMonth.getFullYear(),availabilityMonth.getMonth()+1,1);try{await loadAvailability()}catch(e){say('availabilitymsg',e.message,true)}};
+$('saveavailability').onclick=async()=>{
+  if(!availabilityChanges.size)return;
+  const button=$('saveavailability');
+  button.disabled=true;
+  button.textContent='Salvando…';
+  try{
+    for(const change of availabilityChanges.values()){
+      if(change.available){
+        const {error}=await db.from('availability').upsert(
+          {cell_id:cell,person_id:change.personId,meeting_date:change.date,available:true,note:null},
+          {onConflict:'person_id,meeting_date'}
+        );
+        if(error)throw error;
+      }else{
+        const {error}=await db.from('availability').delete()
+          .eq('cell_id',cell).eq('person_id',change.personId).eq('meeting_date',change.date);
+        if(error)throw error;
+      }
+    }
+    availabilityChanges.clear();
+    await loadAvailability();
+    say('availabilitymsg','Disponibilidade salva com sucesso!');
+  }catch(err){
+    button.disabled=false;
+    say('availabilitymsg','Não foi possível salvar todas as alterações: '+err.message+'. Confira os dados antes de tentar novamente.',true);
+  }finally{
+    button.textContent='Salvar disponibilidade';
+    button.disabled=availabilityChanges.size===0;
+  }
+};
+$('prevmonth').onclick=async()=>{if(availabilityChanges.size&&!confirm('Há alterações ainda não salvas. Deseja descartá-las e mudar de mês?'))return;availabilityChanges.clear();availabilityMonth=new Date(availabilityMonth.getFullYear(),availabilityMonth.getMonth()-1,1);try{await loadAvailability()}catch(e){say('availabilitymsg',e.message,true)}};
+$('nextmonth').onclick=async()=>{if(availabilityChanges.size&&!confirm('Há alterações ainda não salvas. Deseja descartá-las e mudar de mês?'))return;availabilityChanges.clear();availabilityMonth=new Date(availabilityMonth.getFullYear(),availabilityMonth.getMonth()+1,1);try{await loadAvailability()}catch(e){say('availabilitymsg',e.message,true)}};
+window.addEventListener('beforeunload',e=>{if(availabilityChanges.size){e.preventDefault();e.returnValue='';}});
 function historyCount(personId, ministryId, historyRows){
   return (historyRows||[]).filter(x=>x.person_id===personId && x.ministry_id===ministryId).length;
 }
